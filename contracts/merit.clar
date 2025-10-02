@@ -100,3 +100,106 @@
     created-at: uint,
   }
 )
+
+;; User certifications - Earned advanced credentials
+(define-map user-certifications
+  {
+    user: principal,
+    certification-id: uint,
+  }
+  {
+    earned-at: uint,
+    issuer: principal,
+  }
+)
+
+;; Authorized issuers - Verified educational institutions and content providers
+(define-map authorized-issuers
+  principal
+  {
+    name: (string-ascii 100),
+    description: (string-ascii 500),
+    active: bool,
+    registered-at: uint,
+  }
+)
+
+;; STATE VARIABLES
+
+(define-data-var total-achievements uint u0)
+(define-data-var total-certifications uint u0)
+(define-data-var total-users uint u0)
+(define-data-var contract-balance uint u0)
+(define-data-var contract-paused bool false)
+
+;; PRIVATE HELPER FUNCTIONS
+
+(define-private (is-contract-paused)
+  (var-get contract-paused)
+)
+
+(define-private (is-owner)
+  (is-eq tx-sender CONTRACT-OWNER)
+)
+
+(define-private (is-authorized-issuer (issuer principal))
+  (match (map-get? authorized-issuers issuer)
+    issuer-data (get active issuer-data)
+    false
+  )
+)
+
+(define-private (validate-string-length
+    (input (string-ascii 500))
+    (max-length uint)
+  )
+  (<= (len input) max-length)
+)
+
+(define-private (validate-reward-amount (amount uint))
+  (and (>= amount MIN-REWARD-AMOUNT) (<= amount MAX-REWARD-AMOUNT))
+)
+
+(define-private (get-current-time)
+  stacks-block-height
+)
+
+(define-private (create-or-update-user-profile (user principal))
+  (let ((current-time (get-current-time)))
+    (match (map-get? user-profiles user)
+      existing-profile (map-set user-profiles user
+        (merge existing-profile { last-activity: current-time })
+      )
+      (begin
+        (map-set user-profiles user {
+          total-achievements: u0,
+          total-rewards-claimed: u0,
+          total-points: u0,
+          joined-at: current-time,
+          last-activity: current-time,
+        })
+        (var-set total-users (+ (var-get total-users) u1))
+      )
+    )
+  )
+)
+
+(define-private (user-has-achievement
+    (user principal)
+    (achievement-id uint)
+  )
+  (is-some (map-get? user-achievements {
+    user: user,
+    achievement-id: achievement-id,
+  }))
+)
+
+(define-private (user-has-certification
+    (user principal)
+    (certification-id uint)
+  )
+  (is-some (map-get? user-certifications {
+    user: user,
+    certification-id: certification-id,
+  }))
+)
