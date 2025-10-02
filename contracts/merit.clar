@@ -533,3 +533,145 @@
     )
   )
 )
+
+;; PUBLIC FUNCTIONS - PROTOCOL GOVERNANCE
+
+;; Activate emergency pause for protocol security
+(define-public (emergency-pause)
+  (begin
+    (asserts! (is-eq tx-sender CONTRACT-OWNER) ERR-UNAUTHORIZED)
+    (var-set contract-paused true)
+    (ok true)
+  )
+)
+
+;; Resume normal protocol operations
+(define-public (resume-operations)
+  (begin
+    (asserts! (is-eq tx-sender CONTRACT-OWNER) ERR-UNAUTHORIZED)
+    (var-set contract-paused false)
+    (ok true)
+  )
+)
+
+;; Fund the reward pool for learner incentives
+(define-public (fund-contract (amount uint))
+  (begin
+    (asserts! (is-eq tx-sender CONTRACT-OWNER) ERR-UNAUTHORIZED)
+    (asserts! (> amount u0) ERR-INVALID-INPUT)
+    (var-set contract-balance (+ (var-get contract-balance) amount))
+    (ok (var-get contract-balance))
+  )
+)
+
+;; Withdraw funds from the protocol treasury
+(define-public (withdraw-contract-funds (amount uint))
+  (begin
+    (asserts! (is-eq tx-sender CONTRACT-OWNER) ERR-UNAUTHORIZED)
+    (asserts! (> amount u0) ERR-INVALID-INPUT)
+    (asserts! (>= (var-get contract-balance) amount) ERR-INSUFFICIENT-BALANCE)
+    (var-set contract-balance (- (var-get contract-balance) amount))
+    (ok (var-get contract-balance))
+  )
+)
+
+;; READ-ONLY FUNCTIONS - USER QUERIES
+
+;; Retrieve comprehensive learner profile information
+(define-read-only (get-user-profile (user principal))
+  (map-get? user-profiles user)
+)
+
+;; Retrieve achievement definition details
+(define-read-only (get-achievement (achievement-id uint))
+  (map-get? achievement-definitions achievement-id)
+)
+
+;; Retrieve certification credential details
+(define-read-only (get-certification (certification-id uint))
+  (map-get? certifications certification-id)
+)
+
+;; Verify if user has earned specific achievement
+(define-read-only (has-achievement
+    (user principal)
+    (achievement-id uint)
+  )
+  (user-has-achievement user achievement-id)
+)
+
+;; Verify if user has earned specific certification
+(define-read-only (has-certification
+    (user principal)
+    (certification-id uint)
+  )
+  (user-has-certification user certification-id)
+)
+
+;; READ-ONLY FUNCTIONS - PROTOCOL ANALYTICS
+
+;; Retrieve global protocol statistics
+(define-read-only (get-contract-stats)
+  {
+    total-achievements: (var-get total-achievements),
+    total-certifications: (var-get total-certifications),
+    total-users: (var-get total-users),
+    contract-balance: (var-get contract-balance),
+    contract-paused: (var-get contract-paused),
+  }
+)
+
+;; Generate comprehensive user analytics report
+(define-read-only (get-user-report (user principal))
+  (match (map-get? user-profiles user)
+    profile     {
+      user: user,
+      profile:     {
+      total-achievements: (get total-achievements profile),
+      total-rewards-claimed: (get total-rewards-claimed profile),
+      total-points: (get total-points profile),
+      joined-at: (get joined-at profile),
+      last-activity: (get last-activity profile),
+    },
+      contract-stats:     {
+      total-achievements: (var-get total-achievements),
+      total-certifications: (var-get total-certifications),
+      total-users: (var-get total-users),
+      contract-balance: (var-get contract-balance),
+    },
+    }
+        {
+      user: user,
+      profile:     {
+      total-achievements: u0,
+      total-rewards-claimed: u0,
+      total-points: u0,
+      joined-at: u0,
+      last-activity: u0,
+    },
+      contract-stats:     {
+      total-achievements: (var-get total-achievements),
+      total-certifications: (var-get total-certifications),
+      total-users: (var-get total-users),
+      contract-balance: (var-get contract-balance),
+    },
+    }
+  )
+)
+
+;; Retrieve authorized issuer credentials and status
+(define-read-only (get-issuer-info (issuer principal))
+  (map-get? authorized-issuers issuer)
+)
+
+;; Check protocol health and operational status
+(define-read-only (get-contract-health)
+  {
+    paused: (var-get contract-paused),
+    balance: (var-get contract-balance),
+    total-achievements: (var-get total-achievements),
+    total-certifications: (var-get total-certifications),
+    total-users: (var-get total-users),
+    owner: CONTRACT-OWNER,
+  }
+)
