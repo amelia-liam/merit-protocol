@@ -405,3 +405,131 @@
     )
   )
 )
+
+;; PUBLIC FUNCTIONS - CERTIFICATION MANAGEMENT
+
+;; Create a new certification credential with achievement prerequisites
+(define-public (create-certification
+    (name (string-ascii 100))
+    (description (string-ascii 500))
+    (required-achievements-count uint)
+  )
+  (begin
+    (asserts! (not (is-contract-paused)) ERR-INVALID-INPUT)
+    (asserts! (is-authorized-issuer tx-sender) ERR-UNAUTHORIZED)
+    (asserts!
+      (validate-certification-input name description required-achievements-count)
+      ERR-INVALID-INPUT
+    )
+    (let ((new-certification-id (+ (var-get total-certifications) u1)))
+      (map-set certifications new-certification-id {
+        name: name,
+        description: description,
+        required-achievements-count: required-achievements-count,
+        issuer: tx-sender,
+        active: true,
+        created-at: (get-current-time),
+      })
+      (var-set total-certifications new-certification-id)
+      (ok new-certification-id)
+    )
+  )
+)
+
+;; Award a certification to a qualifying learner
+(define-public (award-certification
+    (user principal)
+    (certification-id uint)
+  )
+  (begin
+    (asserts! (not (is-contract-paused)) ERR-INVALID-INPUT)
+    (asserts! (is-authorized-issuer tx-sender) ERR-UNAUTHORIZED)
+    (asserts! (not (user-has-certification user certification-id))
+      ERR-INVALID-INPUT
+    )
+    (asserts! (not (user-certification-limit-reached user)) ERR-LIMIT-EXCEEDED)
+    (match (get-certification-definition certification-id)
+      certification-def (begin
+        (asserts! (get active certification-def) ERR-CERTIFICATION-NOT-FOUND)
+        (asserts!
+          (user-meets-certification-requirements user
+            (get required-achievements-count certification-def)
+          )
+          ERR-INVALID-INPUT
+        )
+        (create-or-update-user-profile user)
+        (map-set user-certifications {
+          user: user,
+          certification-id: certification-id,
+        } {
+          earned-at: (get-current-time),
+          issuer: tx-sender,
+        })
+        (ok true)
+      )
+      ERR-CERTIFICATION-NOT-FOUND
+    )
+  )
+)
+
+;; Deactivate a certification credential
+(define-public (deactivate-certification (certification-id uint))
+  (begin
+    (asserts! (not (is-contract-paused)) ERR-INVALID-INPUT)
+    (match (get-certification-definition certification-id)
+      certification-def (begin
+        (asserts!
+          (or (is-owner) (is-eq tx-sender (get issuer certification-def)))
+          ERR-UNAUTHORIZED
+        )
+        (map-set certifications certification-id
+          (merge certification-def { active: false })
+        )
+        (ok true)
+      )
+      ERR-CERTIFICATION-NOT-FOUND
+    )
+  )
+)
+
+;; PUBLIC FUNCTIONS - REWARD CLAIMING
+
+;; Claim tokenized rewards for earned achievement
+(define-public (claim-achievement-reward (achievement-id uint))
+  (begin
+    (asserts! (not (is-contract-paused)) ERR-INVALID-INPUT)
+    (match (get-user-achievement tx-sender achievement-id)
+      user-achievement (begin
+        (asserts! (not (get claimed user-achievement)) ERR-REWARD-ALREADY-CLAIMED)
+        (match (get-achievement-definition achievement-id)
+          achievement-def (begin
+            (asserts! (get active achievement-def) ERR-ACHIEVEMENT-NOT-FOUND)
+            (let ((reward-amount (get reward-amount achievement-def)))
+              (asserts! (>= (var-get contract-balance) reward-amount)
+                ERR-INSUFFICIENT-BALANCE
+              )
+              (map-set user-achievements {
+                user: tx-sender,
+                achievement-id: achievement-id,
+              }
+                (merge user-achievement { claimed: true })
+              )
+              (match (map-get? user-profiles tx-sender)
+                profile (map-set user-profiles tx-sender
+                  (merge profile { total-rewards-claimed: (+ (get total-rewards-claimed profile) reward-amount) })
+                )
+                true
+              )
+              (var-set contract-balance
+                (- (var-get contract-balance) reward-amount)
+              )
+              (ok reward-amount)
+            )
+          )
+          ERR-ACHIEVEMENT-NOT-FOUND
+        )
+      )
+      ERR-ACHIEVEMENT-NOT-FOUND
+    )
+  )
+)
