@@ -203,3 +203,101 @@
     certification-id: certification-id,
   }))
 )
+
+(define-private (get-user-achievement
+    (user principal)
+    (achievement-id uint)
+  )
+  (map-get? user-achievements {
+    user: user,
+    achievement-id: achievement-id,
+  })
+)
+
+(define-private (get-achievement-definition (achievement-id uint))
+  (map-get? achievement-definitions achievement-id)
+)
+
+(define-private (get-certification-definition (certification-id uint))
+  (map-get? certifications certification-id)
+)
+
+(define-private (get-user-achievement-count (user principal))
+  (match (map-get? user-profiles user)
+    profile (get total-achievements profile)
+    u0
+  )
+)
+
+(define-private (user-meets-certification-requirements
+    (user principal)
+    (required-achievements-count uint)
+  )
+  (>= (get-user-achievement-count user) required-achievements-count)
+)
+
+(define-private (validate-achievement-input
+    (name (string-ascii 100))
+    (description (string-ascii 500))
+    (category (string-ascii 50))
+    (reward-amount uint)
+  )
+  (and
+    (validate-string-length name u100)
+    (validate-string-length description u500)
+    (validate-string-length category u50)
+    (validate-reward-amount reward-amount)
+    (not (is-eq name ""))
+    (not (is-eq category ""))
+  )
+)
+
+(define-private (validate-certification-input
+    (name (string-ascii 100))
+    (description (string-ascii 500))
+    (required-achievements-count uint)
+  )
+  (and
+    (validate-string-length name u100)
+    (validate-string-length description u500)
+    (not (is-eq name ""))
+    (> required-achievements-count u0)
+  )
+)
+
+(define-private (user-achievement-limit-reached (user principal))
+  (match (map-get? user-profiles user)
+    profile (>= (get total-achievements profile) MAX-ACHIEVEMENTS-PER-USER)
+    false
+  )
+)
+
+(define-private (user-certification-limit-reached (user principal))
+  (let ((certification-count u0))
+    (>= certification-count MAX-CERTIFICATIONS-PER-USER)
+  )
+)
+
+;; PUBLIC FUNCTIONS - ISSUER MANAGEMENT
+
+;; Register a new authorized educational institution or content provider
+(define-public (register-issuer
+    (issuer principal)
+    (name (string-ascii 100))
+    (description (string-ascii 500))
+  )
+  (begin
+    (asserts! (is-eq tx-sender CONTRACT-OWNER) ERR-UNAUTHORIZED)
+    (asserts! (not (is-contract-paused)) ERR-INVALID-INPUT)
+    (asserts! (validate-string-length name u100) ERR-INVALID-INPUT)
+    (asserts! (validate-string-length description u500) ERR-INVALID-INPUT)
+    (asserts! (not (is-eq name "")) ERR-INVALID-INPUT)
+    (map-set authorized-issuers issuer {
+      name: name,
+      description: description,
+      active: true,
+      registered-at: (get-current-time),
+    })
+    (ok true)
+  )
+)
